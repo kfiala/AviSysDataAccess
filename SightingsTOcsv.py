@@ -298,8 +298,8 @@ def readAssociate():
 	try:
 		associate_input = open(ASSOCIATE_FILE,"rb")
 	except FileNotFoundError:
-		print('Error: File',ASSOCIATE_FILE,'not found.')
-		raise SystemExit
+		print('Note: File',ASSOCIATE_FILE,'not found.')
+		return output
 	except:
 		print("Error opening",ASSOCIATE_FILE,'--',sys.exc_info()[1])
 		raise SystemExit
