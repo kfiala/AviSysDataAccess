@@ -238,7 +238,7 @@ def readPlaces():
 		link = int.from_bytes(place[37:39],"little")
 		placeInfo = Place(placeNumber,name,link)
 		output[placeNumber] = placeInfo
-	
+
 	places_input.close()
 	# Now make the 6-level list of links for each place
 	for placeNumber in output:
@@ -283,7 +283,7 @@ def readAssociate():
 # 43-102 	eBird hotspot (60 chars)
 # 103		lat len
 # 104-115	lat
-# 116-123	binary (float) lat 
+# 116-123	binary (float) lat
 # 124		lng len
 # 125-136	lng
 # 137-144	binary (float) lng
@@ -321,7 +321,7 @@ def readAssociate():
 
 			Info = Association(place,location,lat,lng,state,nation)
 			output[place] = Info
-	
+
 	associate_input.close()
 	return output
 
@@ -346,7 +346,7 @@ def readNoteIndex():
 #	length of note number (always 5) in byte 8,
 #	and note number in ascii in bytes 9-13
 
-#	Valid index entries are grouped at the beginning of a block, 
+#	Valid index entries are grouped at the beginning of a block,
 #	and the block may be padded out with non-valid, i.e., unused, entries.
 
 	try:
@@ -366,7 +366,7 @@ def readNoteIndex():
 	blockSize		= int.from_bytes(header[12:16],'little')	# blocksize (874, 0x036a)
 	numNotes		= int.from_bytes(header[22:26],'little')	# Number of notes (e.g., 600)
 	blockFactor		= int.from_bytes(header[26:30],'little')	# Number of notes per block (62, 0x3E)
-	
+
 	reclen = int((blockSize-6) / blockFactor)	# 14
 	if reclen != 14:
 		print('Reclen was expected to be 14 but is', reclen)
@@ -390,7 +390,7 @@ def readNoteIndex():
 			nchar = ix[8]
 			ascii = ix[9:9+nchar].decode('Windows-1252')
 			index[int(ascii)] = blockNumber
-			
+
 			numValid -= 1
 			if not numValid:
 				break	# Finished with all valid entries this block
@@ -431,7 +431,7 @@ def integrateNote(comment,fieldnoteText):
 			text = fieldnoteText[linend+1:]
 		linend = text.find('\n')	# end of second line
 		text = text[0:linend] + ' ' + text[linend+1:]	# Examine the first two lines as one line
-			
+
 		ptr = 0
 		while ptr < len(text) and text[ptr] == ' ':	# Skip over any leading blanks
 			ptr += 1
@@ -444,7 +444,7 @@ def integrateNote(comment,fieldnoteText):
 		comment = comment.strip() + ' ' + fieldnoteText	# Concatenate comment prefix and field note.
 		comment = comment.strip(' \n')
 	return comment
-					
+
 
 #########################################################################################################
 ######################################## The program starts here ########################################
@@ -597,8 +597,9 @@ while True:
 	comment = sighting[29:29+commentLen].decode('Windows-1252')
 
 	comment = integrateNote(comment,fieldnoteText)
-			
-			
+
+	if outputType == 'eBird':
+		comment = comment.replace("\n"," ")
 
 	tally = int.from_bytes(sighting[109:111],'little')
 	if speciesNo in name:
@@ -630,7 +631,7 @@ while True:
 	else:
 		state = ''
 
-	outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,state,country,speciesNo,recordCount])
+	outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount])
 
 def sortkey(array):
 	return array[6]
@@ -638,7 +639,7 @@ def sortkey(array):
 outArray.sort(key=sortkey)
 
 if outputType == 'eBird':
-	csvFields = ['Common name','Genus','Species','Count','Species Comment','Location','Lat','Lng','Date','Start time','State','Country','Protocol','N. Observers','Duration','Complete','Area','Checklist comment']
+	csvFields = ['Common name','Genus','Species','Species Count','Species Comment','Location','Lat','Lng','Date','Start time','State','Country','Protocol','N. Observers','Duration','Complete','Distance','Area','Checklist comment','Important: Delete this header row before importing to eBird']
 else:
 	csvFields = ['Common name','Genus','Species','Place','Date','Count','Comment','State','Nation','Blank','SpeciesNo']
 
@@ -647,15 +648,15 @@ CSVwriter.writeheader()
 
 if outputType == 'eBird':
 	for row in outArray:
-		CSVwriter.writerow({'Common name':row[0],'Genus':row[1],'Species':row[2],'Count':row[3],'Species Comment':row[4],
-			'Location':row[5],'Lat':'','Lng':'','Date':row[6],'Start time':'','State':row[7],'Country':row[8],
-			'Protocol':'historic','N. Observers':1,'Duration':'','Complete':'N','Area':'','Checklist comment':row[10]})
+		CSVwriter.writerow({'Common name':row[0],'Genus':row[1],'Species':row[2],'Species Count':row[3],'Species Comment':row[4],
+			'Location':row[5],'Lat':'','Lng':'','Date':row[7],'Start time':'','State':row[8],'Country':row[9],
+			'Protocol':'historical','N. Observers':1,'Duration':'','Complete':'N','Distance':'','Area':'','Checklist comment':'Imported from AviSys'})
 
 else:
 	for row in outArray:
 		dateVal = row[6].split('-')
 		date = str(int(dateVal[1]))+'/'+str(int(dateVal[2]))+'/'+dateVal[0]
-		
+
 		CSVwriter.writerow({'Common name':row[0],'Genus':row[1],'Species':row[2],'Place':row[5],'Date':date,'Count':row[3],'Comment':row[4],
 			'State':row[7],'Nation':row[8],'Blank':'','SpeciesNo':row[9]})
 
