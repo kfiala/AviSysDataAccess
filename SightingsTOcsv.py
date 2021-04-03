@@ -1,7 +1,10 @@
 # Export the contents of AviSys files SIGHTING.DAT and FNotes.DAT to CSV format
+# Author: Kent Fiala <Kent.Fiala@gmail.com>
+# Version: 1.1 24 July 2020
 
 import sys
 import csv
+import ctypes
 
 # Input files
 DATA_FILE = 'SIGHTING.DAT'
@@ -452,9 +455,16 @@ def integrateNote(comment,fieldnoteText):
 
 outArray = []
 noteDict = {}
+# ref https://stackoverflow.com/questions/55172090/detect-if-python-program-is-executed-via-windows-gui-double-click-vs-command-p
+kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+process_array = (ctypes.c_uint * 1)()
+num_processes = kernel32.GetConsoleProcessList(process_array, 1)
 
 if len(sys.argv) < 2:	# If no command-line argument
-	outputType = 'AviSys'
+	if num_processes <= 2:	# Run from double-click
+		outputType = 'eBird'
+	else:					# Run from command line
+		outputType = 'AviSys'
 else:
 	outputType = sys.argv[1]
 
