@@ -1,6 +1,6 @@
 # Export the contents of AviSys files SIGHTING.DAT and FNotes.DAT to CSV format
 # Author: Kent Fiala <Kent.Fiala@gmail.com>
-# Version: 1.1 24 July 2020
+# Version: 1.2 3 April 2021
 
 import sys
 import csv
@@ -604,9 +604,9 @@ while True:
 	countryLen = sighting[16]
 	country = sighting[17:19].decode('Windows-1252')
 	commentLen = sighting[28]
-	comment = sighting[29:29+commentLen].decode('Windows-1252')
+	shortComment = sighting[29:29+commentLen].decode('Windows-1252').strip()
 
-	comment = integrateNote(comment,fieldnoteText)
+	comment = integrateNote(shortComment,fieldnoteText)
 
 	if outputType == 'eBird':
 		comment = comment.replace("\n"," ")
@@ -641,7 +641,7 @@ while True:
 	else:
 		state = ''
 
-	outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount])
+	outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount,shortComment])
 
 def sortkey(array):
 	return array[6]
@@ -676,9 +676,13 @@ else:
 # The note is terminated by a line of 80 equal signs (which is something that could not be part of the actual note).
 # Note: If AviSys type output, the place is the AviSys place. If eBird type output, the associated eBird location, if any, is used as the place.
 for row in outArray:
-	recordNo = row[10]
+	recordNo = row[11]
 	if recordNo in noteDict:
-		noteOut.write(row[0] +' -- '+ row[6] +' -- '+  row[5] + '\n\n' + noteDict[recordNo] + '\n' + '========================================================================================================================\n')
+		shortComment = row[12]
+		noteOut.write(row[0] +' -- '+ row[6] +' -- '+  row[5] + '\n\n')
+		if len(shortComment):
+			noteOut.write( 'Short comment: ' + shortComment + '\n\n')
+		noteOut.write(noteDict[recordNo] + '\n' + '==========================================================================================\n')
 
 sighting_file.close()
 noteOut.close()
