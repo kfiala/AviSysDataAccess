@@ -363,8 +363,8 @@ def readNoteIndex():
 	header = note_index.read(32)
 	marker = int.from_bytes(header[0:4],'little')
 	if marker != 4294967295:
-		print('Unexpected value',marker,'at beginning of header')
-		raise SystemExit
+		print('Unexpected value',marker,'at beginning of',NOTE_INDEX)
+#		raise SystemExit
 	numBlocks		= int.from_bytes(header[8:12],'little')		# number of 874 byte blocks (e.g., 11)
 	blockSize		= int.from_bytes(header[12:16],'little')	# blocksize (874, 0x036a)
 	numNotes		= int.from_bytes(header[22:26],'little')	# Number of notes (e.g., 600)
@@ -550,8 +550,8 @@ except:
 header = sighting_file.read(111)	# Read a 111 byte record
 marker = int.from_bytes(header[0:4],'little')
 if marker != 4294967295:	# ffffffff
-	print('Unexpected value',marker,'at beginning of header')
-	raise SystemExit
+	print('Unexpected value',marker,'at beginning of',DATA_FILE)
+#	raise SystemExit
 
 EXPORT_FILE += outputType+'.csv'
 try:
