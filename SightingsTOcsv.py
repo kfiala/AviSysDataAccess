@@ -521,6 +521,17 @@ except:
 # 29-108 Comment
 # 109-110 Count
 #
+# Update 2021 08 14: 
+# I figured out how bytes 0-3 are used. 
+# For valid sighting records, the first 4 bytes are zeroes.
+# Corrupted records can be kept in the file but ignored;
+# they are stored in a linked list where bytes 0-3 are the link pointer.
+# The last record in the linked list has ffffffff in bytes 0-3.
+# The first four bytes of the header (first four bytes of the file) point to the beginning of the linked list of corrupt records.
+# If there are no corrupt records, the file begins with ffffffff.
+# The value of the link pointer is the record number; thus multiply by 111 to get the byte offset in the file.
+# To ignore invalid records, skip any record that does not begin with 00000000.
+#
 # Nation bits:
 # 00000100  Australasia
 # 00000200  Eurasia
@@ -549,9 +560,7 @@ except:
 
 header = sighting_file.read(111)	# Read a 111 byte record
 marker = int.from_bytes(header[0:4],'little')
-if marker != 4294967295:	# ffffffff
-	print('Unexpected value',marker,'at beginning of',DATA_FILE)
-#	raise SystemExit
+corruptRecords = 0
 
 EXPORT_FILE += outputType+'.csv'
 try:
@@ -585,6 +594,8 @@ while True:
 	if not sighting:
 		break
 	recordCount+=1
+	corruptPointer = int.from_bytes(sighting[0:4],'little')
+	corruptedRecord = corruptPointer != 0
 	speciesNo = int.from_bytes(sighting[4:6],'little')
 	fieldnote = int.from_bytes(sighting[6:10],'little')
 	if fieldnote:
@@ -616,23 +627,28 @@ while True:
 		commonName = name[speciesNo]
 	else:
 		commonName = '?'
-		print("No name found for species number", speciesNo)
-		raise SystemExit
+		if not corruptedRecord:
+			print("No name found for species number", speciesNo)
+			raise SystemExit
 
 	if place not in places:
-		print("Place", place, "is not set")
-		raise SystemExit
-	linkList = places[place].linklist
-	location = linkList[0] if linkList[0] != '' else \
-		linkList[1] if linkList[1] != '' else \
-		linkList[2] if linkList[2] != '' else \
-		linkList[3] if linkList[3] != '' else \
-		linkList[4] if linkList[4] != '' else \
-		linkList[5] if linkList[5] != '' else \
-		linkList[6]
+		if not corruptedRecord:
+			print("Place", place, "is not set")
+			raise SystemExit
+		else:
+			location = 'Unknown location'
+	else:
+		linkList = places[place].linklist
+		location = linkList[0] if linkList[0] != '' else \
+			linkList[1] if linkList[1] != '' else \
+			linkList[2] if linkList[2] != '' else \
+			linkList[3] if linkList[3] != '' else \
+			linkList[4] if linkList[4] != '' else \
+			linkList[5] if linkList[5] != '' else \
+			linkList[6]
 
-	if outputType == 'eBird' and location in association:
-		location = association[location].locationName	# Use associated eBird location name instead of AviSys place name
+		if outputType == 'eBird' and location in association:
+			location = association[location].locationName	# Use associated eBird location name instead of AviSys place name
 
 	if country == 'US':
 		state = stateCode[linkList[3]]
@@ -641,7 +657,11 @@ while True:
 	else:
 		state = ''
 
-	outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount,shortComment])
+	if corruptedRecord:
+		corruptRecords += 1
+		print('Corrupt record found:',commonName,location,date,state,country,comment)
+	else:
+		outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount,shortComment])
 
 def sortkey(array):
 	return array[6]
@@ -692,3 +712,11 @@ if recordCount != nrecs:
 	print('Should be', nrecs, 'records, but counted', recordCount)
 else:
 	print(nrecs,"records processed")
+if corruptRecords:
+	if corruptRecords == 1:
+		print('File', DATA_FILE, 'contains one corrupt record, which has been ignored. ')
+		print('To remove it from AviSys, run Utilities->Restructure sighting file.')
+	else:
+		print('File', DATA_FILE, 'contains', corruptRecords, 'corrupt records, which have been ignored. ')
+		print('To remove them from AviSys, run Utilities->Restructure sighting file.')
+	print(nrecs-corruptRecords, 'records are valid.')
