@@ -452,7 +452,7 @@ def integrateNote(comment,fieldnoteText):
 #########################################################################################################
 ######################################## The program starts here ########################################
 #########################################################################################################
-
+print('SightingsTOcsv version 1.1')
 outArray = []
 noteDict = {}
 # ref https://stackoverflow.com/questions/55172090/detect-if-python-program-is-executed-via-windows-gui-double-click-vs-command-p
@@ -472,8 +472,10 @@ if outputType.lower() == 'avisys':
 	outputType = 'AviSys'
 elif outputType.lower() == 'ebird':
 	outputType = 'eBird'
+elif outputType.lower() == 'myebird':
+	outputType = 'MyEBirdData'
 else:
-	print("Please specify either AviSys or eBird")
+	print("Please specify either AviSys, eBird, or MyEBird")
 	raise SystemExit
 
 try:
@@ -619,7 +621,7 @@ while True:
 
 	comment = integrateNote(shortComment,fieldnoteText)
 
-	if outputType == 'eBird':
+	if outputType in ['eBird','MyEBirdData']:
 		comment = comment.replace("\n"," ")
 
 	tally = int.from_bytes(sighting[109:111],'little')
@@ -655,26 +657,53 @@ while True:
 	elif country == 'CA':
 		state = provinceCode[linkList[3]]
 	else:
-		state = ''
+		state = linkList[3]
+
+	county = linkList[2]
 
 	if corruptedRecord:
 		corruptRecords += 1
 		print('Corrupt record found:',commonName,location,date,state,country,comment)
 	else:
-		outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount,shortComment])
+		outArray.append([commonName,genusName[speciesNo],speciesName[speciesNo],tally,comment,location,sortdate,date,state,country,speciesNo,recordCount,shortComment,county,speciesNo])
 
 def sortkey(array):
-	return array[6]
+	return array[6]+array[5]	# date+location
 
 outArray.sort(key=sortkey)
 
 if outputType == 'eBird':
 	csvFields = ['Common name','Genus','Species','Species Count','Species Comment','Location','Lat','Lng','Date','Start time','State','Country','Protocol','N. Observers','Duration','Complete','Distance','Area','Checklist comment','Important: Delete this header row before importing to eBird']
+elif outputType == 'MyEBirdData':
+	csvFields = ['Submission ID','Common Name','Scientific Name','Taxonomic Order','Count','State/Province','County','Location ID','Location','Latitude','Longitude','Date','Time','Protocol','Duration (Min)','All Obs Reported','Distance Traveled (km)','Area Covered (ha)','Number of Observers','Breeding Code','Observation Details','Checklist Comments','ML Catalog Numbers']
 else:
 	csvFields = ['Common name','Genus','Species','Place','Date','Count','Comment','State','Nation','Blank','SpeciesNo']
 
 CSVwriter = csv.DictWriter(CSV,fieldnames=csvFields)
 CSVwriter.writeheader()
+
+# Assign a "subid", i.e., a checklist number, to each unique date-location combination.
+# If all counts for a subid are "1", replace them with "X".
+subid = 0
+currentKey = " "
+rowcounter = 0
+startRow = 0
+eX = True if outputType != 'AviSys' else False
+for row in outArray:
+	key = row[6]+row[5]
+	if key != currentKey:	# New date-location combination
+		if eX and subid:	# If all counts in previous subid were "1", set them to "X"
+			for i in range(startRow,rowcounter):
+				outArray[i][3] = 'X'
+		subid += 1	# unique subid for each date-location combination
+
+		startRow = rowcounter
+		currentKey = key
+		eX = True if outputType != 'AviSys' else False
+	if row[3] > 1:	# Count
+		eX = False	# Make note that there was a count > 1s
+	outArray[rowcounter].append(subid)	# should be index 15
+	rowcounter += 1					
 
 if outputType == 'eBird':
 	for row in outArray:
@@ -682,13 +711,25 @@ if outputType == 'eBird':
 			'Location':row[5],'Lat':'','Lng':'','Date':row[7],'Start time':'','State':row[8],'Country':row[9],
 			'Protocol':'historical','N. Observers':1,'Duration':'','Complete':'N','Distance':'','Area':'','Checklist comment':'Imported from AviSys'})
 
+elif outputType == 'MyEBirdData':
+	for row in outArray:
+		CSVwriter.writerow({'Submission ID':row[15],'Common Name':row[0],'Scientific Name':row[1]+' '+row[2],
+			'Taxonomic Order':row[14],'Count':row[3],'State/Province':row[9]+'-'+row[8],'County':row[13],'Location ID':'',
+			'Location':row[5],'Latitude':'','Longitude':'','Date':row[6],'Time':'','Protocol':'historical',
+			'Duration (Min)':'','All Obs Reported':0,'Distance Traveled (km)':'','Area Covered (ha)':'',
+			'Number of Observers':'1',
+			'Breeding Code':'',
+			'Observation Details':row[4],
+			'Checklist Comments':'Imported from AviSys',
+			'ML Catalog Numbers':''})
+		
 else:
 	for row in outArray:
 		dateVal = row[6].split('-')
 		date = str(int(dateVal[1]))+'/'+str(int(dateVal[2]))+'/'+dateVal[0]
 
 		CSVwriter.writerow({'Common name':row[0],'Genus':row[1],'Species':row[2],'Place':row[5],'Date':date,'Count':row[3],'Comment':row[4],
-			'State':row[7],'Nation':row[8],'Blank':'','SpeciesNo':row[9]})
+			'State':row[8],'Nation':row[9],'Blank':'','SpeciesNo':row[9]})
 
 # Write all field notes to a file
 # The entry for each note begins with species name -- date -- place on the first line, followed by a blank line.
