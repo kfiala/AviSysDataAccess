@@ -1,6 +1,7 @@
 # Export the contents of AviSys files SIGHTING.DAT and FNotes.DAT to CSV format
 # Author: Kent Fiala <Kent.Fiala@gmail.com>
-# Version: 1.2 3 April 2021
+
+Version = "2.0"
 
 import sys
 import csv
@@ -201,12 +202,60 @@ def readMaster():
 	master_input.close()
 	return (name,genusName,speciesName)
 
+class FileSpecs:
+	def __init__(self):
+		
+		try:
+			sighting_file = open(DATA_FILE,"rb")
+		except FileNotFoundError:
+			print('Error: File',DATA_FILE,'not found.')
+			raise SystemExit
+		except:
+			print("Error opening",DATA_FILE,'--',sys.exc_info()[1])
+			raise SystemExit
+
+		header = sighting_file.read(14)
+		reclen = header[12]
+		if reclen == 111:
+			AviSysVersion = 6
+		elif reclen == 76:
+			AviSysVersion = 4
+		else:
+			print(DATA_FILE, 'record length is', reclen, '; not a supported AviSys version')
+			raise SystemExit
+
+		sighting_file.close()
+
+		self.version = AviSysVersion
+		if AviSysVersion == 6:
+			#places.avi
+			self.placeLink = 37
+			self.placesRecl = 39
+			self.placeDivisor = 450
+			#sightings.dat
+			self.commentLenIndex = 28
+			self.commentOffset = 29
+			self.tallyIndex = 109
+			self.dataLrecl = 111
+
+		elif AviSysVersion == 4:
+
+			self.placeLink = 25
+			self.placesRecl = 27
+			self.placeDivisor = 80
+			
+			self.commentLenIndex = 27
+			self.commentOffset = 28
+			self.tallyIndex = -1		# Version 4 did not support a quantity field
+			self.dataLrecl = 76
+		
+
 class Place:
-	def __init__(self,placeNumber,name,link):
+	def __init__(self,placeNumber,name,link,filespecs):
 		self.placeNumber = placeNumber
 		self.name = name
 		self.link = link
-		self.table = (placeNumber-1)//450
+		self.table = (placeNumber-1)//(filespecs.placeDivisor)
 	def __str__(self):
 		return str(self.placeNumber) + ': ' + self.name + ' ' + str(self.link) + ' (table ' + str(self.table) + ')'
 
@@ -217,6 +266,8 @@ def readPlaces():
 #	6		Length of place name
 #	7-36	Place name
 #	37-38	Place number of linked location
+
+	global filespecs
 
 	output = {}
 
@@ -230,7 +281,7 @@ def readPlaces():
 		raise SystemExit
 
 	while True:	#	Read all the places in the file
-		place = places_input.read(39)	# Read a record of 39 bytes
+		place = places_input.read(filespecs.placesRecl)	# Read a record of 39 bytes
 		if not place:
 			break
 		placeNumber = int.from_bytes(place[0:2],"little")
@@ -238,8 +289,8 @@ def readPlaces():
 			continue;
 
 		name = place[7:(7+place[6])].decode('Windows-1252')
-		link = int.from_bytes(place[37:39],"little")
-		placeInfo = Place(placeNumber,name,link)
+		link = int.from_bytes(place[filespecs.placeLink:filespecs.placeLink+2],"little")
+		placeInfo = Place(placeNumber,name,link,filespecs)
 		output[placeNumber] = placeInfo
 
 	places_input.close()
@@ -301,7 +352,7 @@ def readAssociate():
 	try:
 		associate_input = open(ASSOCIATE_FILE,"rb")
 	except FileNotFoundError:
-		print('Note: File',ASSOCIATE_FILE,'not found.')
+#		print('Note: File',ASSOCIATE_FILE,'not found.')
 		return output
 	except:
 		print("Error opening",ASSOCIATE_FILE,'--',sys.exc_info()[1])
@@ -452,7 +503,7 @@ def integrateNote(comment,fieldnoteText):
 #########################################################################################################
 ######################################## The program starts here ########################################
 #########################################################################################################
-print('SightingsTOcsv version 1.1')
+print('SightingsTOcsv version ' + Version)
 outArray = []
 noteDict = {}
 # ref https://stackoverflow.com/questions/55172090/detect-if-python-program-is-executed-via-windows-gui-double-click-vs-command-p
@@ -477,6 +528,8 @@ elif outputType.lower() == 'myebird':
 else:
 	print("Please specify either AviSys, eBird, or MyEBird")
 	raise SystemExit
+
+filespecs = FileSpecs()
 
 try:
 	FNotes = open(NOTE_FILE,"rb")
@@ -560,7 +613,7 @@ except:
 # 40000000  [Central America]
 # 80000000  [Western Palearctic]
 
-header = sighting_file.read(111)	# Read a 111 byte record
+header = sighting_file.read(filespecs.dataLrecl)	# Read header record
 marker = int.from_bytes(header[0:4],'little')
 corruptRecords = 0
 
@@ -584,15 +637,9 @@ except:
 
 nrecs = int.from_bytes(header[8:12],"little")
 
-reclen = header[12]
-if reclen != 111:
-	print('Record length is', reclen, 'expecting it to be 111.')
-	raise SystemExit
-
-
 recordCount = 0
 while True:
-	sighting = sighting_file.read(111)
+	sighting = sighting_file.read(filespecs.dataLrecl)
 	if not sighting:
 		break
 	recordCount+=1
@@ -616,15 +663,20 @@ while True:
 	place = int.from_bytes(sighting[14:16],'little')
 	countryLen = sighting[16]
 	country = sighting[17:19].decode('Windows-1252')
-	commentLen = sighting[28]
-	shortComment = sighting[29:29+commentLen].decode('Windows-1252').strip()
+	
+	commentLen = sighting[filespecs.commentLenIndex]
+	shortComment = sighting[filespecs.commentOffset:filespecs.commentOffset+commentLen].decode('Windows-1252').strip()
 
 	comment = integrateNote(shortComment,fieldnoteText)
 
 	if outputType in ['eBird','MyEBirdData']:
 		comment = comment.replace("\n"," ")
 
-	tally = int.from_bytes(sighting[109:111],'little')
+	if filespecs.tallyIndex > 0:
+		tally = int.from_bytes(sighting[filespecs.tallyIndex:filespecs.tallyIndex+2],'little')
+	else:
+		tally = 1
+
 	if speciesNo in name:
 		commonName = name[speciesNo]
 	else:
@@ -652,14 +704,20 @@ while True:
 		if outputType == 'eBird' and location in association:
 			location = association[location].locationName	# Use associated eBird location name instead of AviSys place name
 
-	if country == 'US':
-		state = stateCode[linkList[3]]
-	elif country == 'CA':
-		state = provinceCode[linkList[3]]
+	if len(linkList) > 3:	# linkList will be short for an unlinked location
+		if country == 'US':
+			state = stateCode[linkList[3]]
+		elif country == 'CA':
+			state = provinceCode[linkList[3]]
+		else:
+			state = linkList[3]
 	else:
-		state = linkList[3]
+		state = ''
 
-	county = linkList[2]
+	if len(linkList) > 2:
+		county = linkList[2]
+	else:
+		county = ''
 
 	if corruptedRecord:
 		corruptRecords += 1
@@ -752,7 +810,7 @@ CSV.close()
 if recordCount != nrecs:
 	print('Should be', nrecs, 'records, but counted', recordCount)
 else:
-	print(nrecs,"records processed")
+	print(nrecs,"records processed","from AviSys version", filespecs.version,"data.")
 if corruptRecords:
 	if corruptRecords == 1:
 		print('File', DATA_FILE, 'contains one corrupt record, which has been ignored. ')
