@@ -6,6 +6,7 @@ Version = "2.0"
 import sys
 import csv
 import ctypes
+import os	# for getsize
 
 # Input files
 DATA_FILE = 'SIGHTING.DAT'
@@ -219,7 +220,15 @@ class FileSpecs:
 		if reclen == 111:
 			AviSysVersion = 6
 		elif reclen == 76:
-			AviSysVersion = 4
+			# Version 4 and 5 have same structure for SIGHTING.DAT but different sizes for PLACES.AVI		
+			placesSize = os.path.getsize(PLACES_FILE)
+			if placesSize == 11340:
+				AviSysVersion = 4
+			elif placesSize == 63450:
+				AviSysVersion = 5
+			else:
+				print(PLACES_FILE, 'contains', placesSize, 'bytes, which is not expected for any supported AviSys version')
+				raise SystemExit
 		else:
 			print(DATA_FILE, 'record length is', reclen, '; not a supported AviSys version')
 			raise SystemExit
@@ -228,27 +237,29 @@ class FileSpecs:
 
 		self.version = AviSysVersion
 		if AviSysVersion == 6:
-			#places.avi
+			# PLACES.AVI
 			self.placeLink = 37
 			self.placesRecl = 39
 			self.placeDivisor = 450
-			#sightings.dat
+			# SIGHTING.DAT
 			self.commentLenIndex = 28
 			self.commentOffset = 29
 			self.tallyIndex = 109
 			self.dataLrecl = 111
 
-		elif AviSysVersion == 4:
-
+		else:
 			self.placeLink = 25
 			self.placesRecl = 27
-			self.placeDivisor = 80
+			if AviSysVersion == 4:
+				self.placeDivisor = 80
+			else:
+				self.placeDivisor = 450
 			
 			self.commentLenIndex = 27
 			self.commentOffset = 28
-			self.tallyIndex = -1		# Version 4 did not support a quantity field
+			self.tallyIndex = -1		# quantity field not supported before Version 6
 			self.dataLrecl = 76
-		
+
 
 class Place:
 	def __init__(self,placeNumber,name,link,filespecs):
